@@ -6,12 +6,14 @@
 #include <string.h>
 #include <stdint.h>
 
+//>>>>>>>>>>>设置平台差异>>>>>>>>>>>>>>
 #if __APPLE__ && __MACH__
 #include <sys/ucontext.h>
 #else 
 #include <ucontext.h>
 #endif 
-
+//>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+//
 //表示栈的大小
 //
 #define STACK_SIZE (1024*1024) 
@@ -44,17 +46,26 @@ struct coroutine {
 	char *stack; // 指向栈地址么？
 };
 
+
+/*
+* 创建一个协程的实例
+*
+* */
 struct coroutine *
 	_co_new(struct schedule *S, coroutine_func func, void *ud) { // 用于构建一个coroutine吗？
+                                                            
 	struct coroutine * co = malloc(sizeof(*co)); // 新构建一个coroutine结构
-	co->func = func; // 记录要运行的函数
-	co->ud = ud; // 参数
+                                         //co->func表示协程的执行函数                    
+	co->func = func; // 记录要运行的函数 
+	co->ud = ud; // 参数 ud表示用户的参数
+
 	co->sch = S; // schedule究竟是用来干什么的？一个指针用于指向S
 	co->cap = 0;
 	co->size = 0;
-	co->status = COROUTINE_READY;
+	co->status = COROUTINE_READY; //刚创建的协程是准备状态
 	co->stack = NULL; // 要看到，这里指向的是NULL
 	return co;
+
 }
 
 void
@@ -68,11 +79,11 @@ struct schedule *
 	struct schedule *S = malloc(sizeof(*S)); // 居然构建一个schedule
 	S->nco = 0; // 表示协程的数目为0
 	S->cap = DEFAULT_COROUTINE; // DEFAULT_COROUTINE貌似是16啊！ cap表示容量
-	S->running = -1; // -1表示还没有开始运行
-	S->co = malloc(sizeof(struct coroutine *) * S->cap); //创建一个协程
-    
+	S->running = -1; // -1表示还没有协程可以运行
+	S->co = malloc(sizeof(struct coroutine *) * S->cap); //创建一个协程的实例
+
 	memset(S->co, 0, sizeof(struct coroutine *) * S->cap);
-    
+
 	return S;
 }
  
@@ -95,12 +106,14 @@ int
 coroutine_new(struct schedule *S, coroutine_func func, void *ud) { // 用于新建一个一个coroutine
 	struct coroutine *co = _co_new(S, func, ud); // ud你可以认为是参数
 	if (S->nco >= S->cap) { // nco表示协程的数目大于容量了。
-		int id = S->cap;
-		S->co = realloc(S->co, S->cap * 2 * sizeof(struct coroutine *)); // 用于重新分配
+		int id = S->cap; //实际数目超出容量
+
+
+		S->co = realloc(S->co, S->cap * 2 * sizeof(struct coroutine *)); // 用于重新分配开始扩容
 		memset(S->co + S->cap, 0, sizeof(struct coroutine *) * S->cap);
 		S->co[S->cap] = co; // 好吧，终于开始装入coroutine了！
 		S->cap *= 2; // 因为容量翻倍了嘛
-		++S->nco; //设置实际协程个数
+		++S->nco; //设置实际协程个数++
 		return id; //id表示shedule 以前的协程数量
 	}
 	else {
@@ -193,7 +206,7 @@ coroutine_yield(struct schedule * S) {
 	int id = S->running;
 	assert(id >= 0);
 	struct coroutine * C = S->co[id];
-	assert((char *)&C > S->stack);
+ 	assert((char *)&C > S->stack);
 	_save_stack(C, S->stack + STACK_SIZE); // 用于保存堆栈的信息
 	C->status = COROUTINE_SUSPEND; // 状态变成了挂起
 	S->running = -1;
